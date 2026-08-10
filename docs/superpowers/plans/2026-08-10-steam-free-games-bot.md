@@ -6,7 +6,7 @@
 
 **Architecture:** Telegram calls a secret-validated Worker webhook for `/start` and `/stop`; a Cloudflare Cron Trigger calls a scheduled handler hourly. D1 stores subscribers, the current offer snapshot, and successful per-user deliveries so retries do not duplicate successful notifications.
 
-**Tech Stack:** JavaScript ES modules, Cloudflare Workers, D1, Wrangler 4.120.0, Vitest 4.1.10, `@cloudflare/vitest-pool-workers` 0.20.3, Node.js 22 or newer.
+**Tech Stack:** JavaScript ES modules, Cloudflare Workers, D1, `entities` 8.0.0, Wrangler 4.120.0, Vitest 4.1.10, `@cloudflare/vitest-pool-workers` 0.20.3, Node.js 22 or newer.
 
 ## Global Constraints
 
@@ -68,7 +68,7 @@
 
 - [ ] **Step 1: Add minimal tool configuration**
 
-Create `package.json` with private ESM configuration, Node `>=22`, scripts `test`, `test:watch`, `check` (`npm test && npx wrangler deploy --dry-run`), and exact dev dependencies Wrangler 4.120.0, Vitest 4.1.10, and Workers pool 0.20.3. Create `wrangler.jsonc` with `main: "src/index.js"`, compatibility date `2026-08-10`, a local D1 ID, `STEAM_SEARCH_URL`, and cron `0 * * * *`. Configure Vitest with `cloudflareTest`, `readD1Migrations`, a `TEST_MIGRATIONS` binding, and `test/apply-migrations.js`.
+Create `package.json` with private ESM configuration, Node `>=22`, scripts `test`, `test:watch`, `check` (`npm test && npx wrangler deploy --dry-run`), exact dev dependencies Wrangler 4.120.0, Vitest 4.1.10, and Workers pool 0.20.3, plus `entities` 8.0.0 for standards-complete Steam title decoding. Create `wrangler.jsonc` with `main: "src/index.js"`, compatibility date `2026-08-08` (the newest date supported by the locked runtime), a local D1 ID, `STEAM_SEARCH_URL`, and cron `0 * * * *`. Configure Vitest with `cloudflareTest`, `readD1Migrations`, a `TEST_MIGRATIONS` binding, and `test/apply-migrations.js`.
 
 Use this schema:
 
@@ -101,7 +101,7 @@ CREATE INDEX deliveries_app_id ON deliveries(app_id);
 
 Run: `npm install`
 
-Expected: `package-lock.json` is created with no runtime dependencies and npm exits successfully.
+Expected: `package-lock.json` is created with only `entities` as a direct runtime dependency and npm exits successfully.
 
 - [ ] **Step 3: Write failing repository tests**
 
@@ -221,7 +221,7 @@ Do not accept an empty array unless the recognizable results container was obser
 
 - [ ] **Step 4: Add a failing HTTP boundary test**
 
-Use Workers `fetchMock` with `disableNetConnect()` to verify the exact supplied URL, a browser-like user agent, non-2xx rejection, and parsing of a successful body. The production request must use `AbortSignal.timeout(15_000)`.
+Use a Vitest global `fetch` boundary stub to verify the exact supplied URL, a browser-like user agent, non-2xx rejection, and parsing of a successful body. The production request must use `AbortSignal.timeout(15_000)`. The locked Workers pool no longer exports the older `fetchMock` helper.
 
 - [ ] **Step 5: Implement `fetchSteamOffers` and verify GREEN**
 
@@ -273,7 +273,7 @@ POST JSON to `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`
 
 - [ ] **Step 4: Add failing transport tests**
 
-Use `fetchMock` to assert the observable request payload and to cover success, `403`, ordinary `500`, and `429` with `parameters.retry_after: 1`. For `429`, use fake timers and assert exactly one retry, then success. The test catches removing the retry branch or retrying without its bounded limit.
+Use a Vitest global `fetch` boundary stub to assert the observable request payload and to cover success, `403`, ordinary `500`, and `429` with `parameters.retry_after: 1`. For `429`, use fake timers and assert exactly one retry, then success. The test catches removing the retry branch or retrying without its bounded limit.
 
 - [ ] **Step 5: Implement one bounded `429` retry and verify GREEN**
 
@@ -302,7 +302,7 @@ git commit -m "feat: add Telegram message delivery"
 
 - [ ] **Step 1: Write failing `/start` behavior tests**
 
-Use real D1 and `fetchMock` for Telegram. A complete update fixture contains `update_id`, `message.message_id`, `message.chat.id`, `message.chat.type`, `message.date`, and `message.text`.
+Use real D1 and a global `fetch` boundary stub for Telegram. A complete update fixture contains `update_id`, `message.message_id`, `message.chat.id`, `message.chat.type`, `message.date`, and `message.text`.
 
 ```js
 it("subscribes a private chat and immediately sends cached offers", async () => {
