@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "steam-free-games-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-08",
+  "vars": {
+    "STEAM_SEARCH_URL": "https://store.steampowered.com/search/?hwtype=0&maxprice=free&category1=998&specials=1&ndl=1"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "steam-free-games-bot",
+      "database_id": "local",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}

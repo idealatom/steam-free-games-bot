@@ -1,0 +1,19 @@
+{
+  "name": "steam-free-games-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm test && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.20.3",
+    "vitest": "4.1.10",
+    "wrangler": "4.120.0"
+  }
+}
