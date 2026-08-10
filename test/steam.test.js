@@ -38,7 +38,7 @@ describe("Steam search results", () => {
 
   it("accepts a recognizable empty result", async () => {
     await expect(
-      parseSteamOffers('<div id="search_resultsRows"></div>'),
+      parseSteamOffers('<div id="search_results" class="search_results"></div>'),
     ).resolves.toEqual([]);
   });
 

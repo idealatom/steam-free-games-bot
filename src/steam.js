@@ -12,7 +12,7 @@ export async function parseSteamOffers(html) {
   const offers = new Map();
 
   const rewriter = new HTMLRewriter()
-    .on("#search_resultsRows", {
+    .on("#search_resultsRows, #search_results", {
       element() {
         recognized = true;
       },
