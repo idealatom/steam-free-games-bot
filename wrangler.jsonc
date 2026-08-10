@@ -10,7 +10,7 @@
     {
       "binding": "DB",
       "database_name": "steam-free-games-bot",
-      "database_id": "local",
+      "database_id": "48beece7-1941-4665-9540-3b0e4cb56480",
       "migrations_dir": "migrations"
     }
   ],
