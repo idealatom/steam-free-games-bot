@@ -12,7 +12,6 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [
     cloudflareTest(async () => ({
-      main: "./test/worker-stub.js",
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
         bindings: {
