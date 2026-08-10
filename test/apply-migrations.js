@@ -4,6 +4,8 @@ import { beforeEach } from "vitest";
 beforeEach(async () => {
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM notification_deliveries"),
+    env.DB.prepare("DELETE FROM notification_events"),
     env.DB.prepare("DELETE FROM deliveries"),
     env.DB.prepare("DELETE FROM offers"),
     env.DB.prepare("DELETE FROM subscribers"),

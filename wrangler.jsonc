@@ -14,6 +14,24 @@
       "migrations_dir": "migrations"
     }
   ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "NOTIFICATION_QUEUE",
+        "queue": "steam-free-games-notifications"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "steam-free-games-notifications",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 10,
+        "dead_letter_queue": "steam-free-games-notifications-dlq",
+        "max_concurrency": 1
+      }
+    ]
+  },
   "triggers": {
     "crons": ["0 * * * *"]
   }

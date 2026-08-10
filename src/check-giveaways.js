@@ -1,52 +1,36 @@
 import {
-  listPendingBySubscriber,
-  markDelivered,
+  cleanupNotificationEvents,
+  listDispatchableEvents,
+  markEventDispatched,
   reconcileOffers,
-  unsubscribe,
 } from "./repository.js";
 import { fetchSteamOffers } from "./steam.js";
-import {
-  formatOffersMessage,
-  sendTelegramMessage,
-  TelegramError,
-} from "./telegram.js";
 
-function notificationHeading(offerCount) {
-  return offerCount === 1
-    ? "New free game on Steam:"
-    : "New free games on Steam:";
+const QUEUE_BATCH_SIZE = 100;
+
+async function dispatchPendingEvents(env, dispatchedAt) {
+  const events = await listDispatchableEvents(env.DB, dispatchedAt);
+  for (const event of events) {
+    for (let offset = 0; offset < event.jobs.length; offset += QUEUE_BATCH_SIZE) {
+      await env.NOTIFICATION_QUEUE.sendBatch(
+        event.jobs
+          .slice(offset, offset + QUEUE_BATCH_SIZE)
+          .map((body) => ({ body })),
+      );
+    }
+    await markEventDispatched(env.DB, event.id, dispatchedAt);
+  }
 }
 
 export async function checkGiveaways(env, observedAt = Date.now()) {
-  const currentOffers = await fetchSteamOffers(env.STEAM_SEARCH_URL);
-  await reconcileOffers(env.DB, currentOffers, observedAt);
-
-  const pending = await listPendingBySubscriber(env.DB);
-  const failures = [];
-
-  for (const [chatId, offers] of pending) {
-    try {
-      await sendTelegramMessage(
-        env,
-        chatId,
-        formatOffersMessage(offers, notificationHeading(offers.length)),
-      );
-      await markDelivered(
-        env.DB,
-        chatId,
-        offers.map(({ appId }) => appId),
-        observedAt,
-      );
-    } catch (error) {
-      if (error instanceof TelegramError && error.status === 403) {
-        await unsubscribe(env.DB, chatId);
-      } else {
-        failures.push(error);
-      }
-    }
+  try {
+    const currentOffers = await fetchSteamOffers(env.STEAM_SEARCH_URL);
+    await reconcileOffers(env.DB, currentOffers, observedAt);
+  } finally {
+    await dispatchPendingEvents(env, observedAt);
   }
 
-  if (failures.length > 0) {
-    throw new AggregateError(failures, "Failed to notify some subscribers");
+  if (new Date(observedAt).getUTCHours() === 0) {
+    await cleanupNotificationEvents(env.DB, observedAt);
   }
 }

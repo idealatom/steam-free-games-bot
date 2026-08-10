@@ -1,6 +1,5 @@
 import {
   listOffers,
-  markDelivered,
   subscribe,
   unsubscribe,
 } from "./repository.js";
@@ -38,11 +37,6 @@ export async function handleTelegramUpdate(env, update) {
         env,
         chatId,
         formatOffersMessage(offers, "Currently free on Steam:"),
-      );
-      await markDelivered(
-        env.DB,
-        chatId,
-        offers.map(({ appId }) => appId),
       );
     }
     return;

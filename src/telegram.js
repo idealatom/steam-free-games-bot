@@ -26,7 +26,7 @@ export class TelegramError extends Error {
   }
 }
 
-async function requestTelegram(env, chatId, text) {
+export async function sendTelegramMessageOnce(env, chatId, text) {
   const response = await fetch(
     `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
     {
@@ -63,7 +63,7 @@ async function requestTelegram(env, chatId, text) {
 export async function sendTelegramMessage(env, chatId, text) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await requestTelegram(env, chatId, text);
+      return await sendTelegramMessageOnce(env, chatId, text);
     } catch (error) {
       if (
         attempt === 0 &&

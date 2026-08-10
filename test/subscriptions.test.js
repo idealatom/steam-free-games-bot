@@ -2,8 +2,7 @@ import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  listPendingBySubscriber,
-  markDelivered,
+  recordNotificationDeliveries,
   reconcileOffers,
   subscribe,
 } from "../src/repository.js";
@@ -35,7 +34,11 @@ describe("Telegram subscriptions", () => {
     expect(
       await env.DB.prepare("SELECT chat_id FROM subscribers").first("chat_id"),
     ).toBe(101);
-    expect(await listPendingBySubscriber(env.DB)).toEqual(new Map());
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM notification_deliveries",
+      ).first("count"),
+    ).toBe(0);
     expect(messages).toHaveLength(2);
     expect(messages[0].text).toBe(
       "✅ You are subscribed to Steam free game alerts.",
@@ -89,8 +92,12 @@ describe("Telegram subscriptions", () => {
 
   it("stops future notifications and removes existing deliveries", async () => {
     await subscribe(env.DB, 101);
-    await reconcileOffers(env.DB, [MOONLIGHTER], 1_786_342_400);
-    await markDelivered(env.DB, 101, [MOONLIGHTER.appId]);
+    const eventId = await reconcileOffers(
+      env.DB,
+      [MOONLIGHTER],
+      1_786_342_400_000,
+    );
+    await recordNotificationDeliveries(env.DB, [{ eventId, chatId: 101 }]);
     const { messages } = captureTelegramMessages();
 
     await handleTelegramUpdate(env, privateCommand(101, "/stop"));
@@ -104,6 +111,11 @@ describe("Telegram subscriptions", () => {
       await env.DB.prepare("SELECT COUNT(*) AS count FROM deliveries").first(
         "count",
       ),
+    ).toBe(0);
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM notification_deliveries",
+      ).first("count"),
     ).toBe(0);
     expect(messages.map(({ text }) => text)).toEqual([
       "🔕 Notifications are disabled.",

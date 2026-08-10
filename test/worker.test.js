@@ -105,13 +105,13 @@ describe("Worker entry points", () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
-  it("uses the scheduled time to store and deliver an hourly offer", async () => {
+  it("uses the scheduled time to store and queue an hourly offer", async () => {
     await env.DB.prepare(
       "INSERT INTO subscribers (chat_id, subscribed_at) VALUES (?, ?)",
     )
-      .bind(101, 1_786_342_000)
+      .bind(101, 1_786_342_399_000)
       .run();
-    const telegramMessages = [];
+    const batches = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url, options) => {
@@ -127,21 +127,54 @@ describe("Worker entry points", () => {
             `,
           }));
         }
-        telegramMessages.push(JSON.parse(options.body));
-        return successfulTelegramResponse();
+        throw new Error(`Unexpected direct request: ${url}`);
       }),
     );
 
     await worker.scheduled(
-      { scheduledTime: 1_786_342_400, cron: "0 * * * *" },
-      env,
+      { scheduledTime: 1_786_342_400_000, cron: "0 * * * *" },
+      {
+        DB: env.DB,
+        STEAM_SEARCH_URL: env.STEAM_SEARCH_URL,
+        NOTIFICATION_QUEUE: {
+          async sendBatch(messages) {
+            batches.push(messages);
+          },
+        },
+      },
       {},
     );
 
     expect(
       await env.DB.prepare("SELECT observed_at FROM offers").first("observed_at"),
-    ).toBe(1_786_342_400);
-    expect(telegramMessages).toHaveLength(1);
-    expect(telegramMessages[0].chat_id).toBe(101);
+    ).toBe(1_786_342_400_000);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(1);
+    expect(batches[0][0].body.chatId).toBe(101);
+  });
+
+  it("delegates Queue batches to the notification consumer", async () => {
+    await env.DB.prepare(
+      "INSERT INTO subscribers (chat_id, subscribed_at) VALUES (?, ?)",
+    )
+      .bind(101, 1_786_342_399_000)
+      .run();
+    const eventId = await env.DB.prepare(
+      `INSERT INTO notification_events (offers_json, created_at, dispatched_at)
+       VALUES (?, ?, ?) RETURNING id`,
+    )
+      .bind(JSON.stringify([MOONLIGHTER]), 1_786_342_400_000, 1_786_342_400_000)
+      .first("id");
+    vi.stubGlobal("fetch", vi.fn(async () => successfulTelegramResponse()));
+    const message = {
+      body: { eventId, chatId: 101 },
+      ack: vi.fn(),
+      retry: vi.fn(),
+    };
+
+    await worker.queue({ messages: [message] }, env);
+
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   formatOffersMessage,
   sendTelegramMessage,
+  sendTelegramMessageOnce,
   TelegramError,
 } from "../src/telegram.js";
 import { MOONLIGHTER } from "./fixtures.js";
@@ -171,5 +172,25 @@ describe("Telegram messages", () => {
 
     await assertion;
     expect(fetchStub).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes a single-attempt sender for Queue retries", async () => {
+    const fetchStub = vi.fn(async () =>
+      telegramResponse(
+        {
+          ok: false,
+          error_code: 429,
+          description: "Too Many Requests",
+          parameters: { retry_after: 7 },
+        },
+        429,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+
+    await expect(
+      sendTelegramMessageOnce(TEST_ENV, 101, "message"),
+    ).rejects.toMatchObject({ status: 429, retryAfter: 7 });
+    expect(fetchStub).toHaveBeenCalledOnce();
   });
 });

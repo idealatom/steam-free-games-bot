@@ -2,88 +2,124 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import {
+  listDispatchableEvents,
   listOffers,
-  listPendingBySubscriber,
-  markDelivered,
+  markEventDispatched,
   reconcileOffers,
+  recordNotificationDeliveries,
   subscribe,
   unsubscribe,
 } from "../src/repository.js";
+import { BREATHEDGE, MOONLIGHTER } from "./fixtures.js";
 
-const MOONLIGHTER = {
-  appId: 606150,
-  title: "Moonlighter",
-  url: "https://store.steampowered.com/app/606150/",
-};
-const BREATHEDGE = {
-  appId: 738520,
-  title: "Breathedge",
-  url: "https://store.steampowered.com/app/738520/",
-};
+const NOW = 1_786_342_400_000;
 
 describe("giveaway repository", () => {
-  it("keeps one subscriber when subscription is repeated", async () => {
-    await subscribe(env.DB, 101, 1_786_342_400);
-    await subscribe(env.DB, 101, 1_786_346_000);
+  it("keeps the original subscription time when start is repeated", async () => {
+    await subscribe(env.DB, 101, NOW - 1_000);
+    await subscribe(env.DB, 101, NOW);
 
-    const row = await env.DB.prepare(
-      "SELECT chat_id, subscribed_at FROM subscribers",
-    ).first();
-
-    expect(row).toEqual({ chat_id: 101, subscribed_at: 1_786_342_400 });
+    expect(
+      await env.DB.prepare(
+        "SELECT chat_id, subscribed_at FROM subscribers",
+      ).first(),
+    ).toEqual({ chat_id: 101, subscribed_at: NOW - 1_000 });
   });
 
-  it("lists each undelivered offer under each subscriber", async () => {
-    await subscribe(env.DB, 101);
-    await subscribe(env.DB, 202);
-    await reconcileOffers(env.DB, [BREATHEDGE, MOONLIGHTER], 1_786_342_400);
+  it("creates one immutable event containing only newly added offers", async () => {
+    const firstEventId = await reconcileOffers(
+      env.DB,
+      [MOONLIGHTER],
+      NOW,
+    );
+    const unchangedEventId = await reconcileOffers(
+      env.DB,
+      [{ ...MOONLIGHTER, title: "Moonlighter updated" }],
+      NOW + 1_000,
+    );
+    const secondEventId = await reconcileOffers(
+      env.DB,
+      [{ ...MOONLIGHTER, title: "Moonlighter updated" }, BREATHEDGE],
+      NOW + 2_000,
+    );
 
-    const pending = await listPendingBySubscriber(env.DB);
+    expect(firstEventId).toBeTypeOf("number");
+    expect(unchangedEventId).toBeNull();
+    expect(secondEventId).toBeGreaterThan(firstEventId);
+    expect(await listOffers(env.DB)).toEqual([
+      { ...MOONLIGHTER, title: "Moonlighter updated" },
+      BREATHEDGE,
+    ]);
 
-    expect([...pending]).toEqual([
-      [101, [MOONLIGHTER, BREATHEDGE]],
-      [202, [MOONLIGHTER, BREATHEDGE]],
+    const { results } = await env.DB.prepare(
+      "SELECT offers_json FROM notification_events ORDER BY id",
+    ).all();
+    expect(results.map(({ offers_json: json }) => JSON.parse(json))).toEqual([
+      [MOONLIGHTER],
+      [BREATHEDGE],
     ]);
   });
 
-  it("keeps deliveries for unchanged offers and removes them with ended offers", async () => {
-    await subscribe(env.DB, 101);
-    await reconcileOffers(env.DB, [MOONLIGHTER], 1_786_342_400);
-    await markDelivered(env.DB, 101, [MOONLIGHTER.appId], 1_786_342_401);
-    await reconcileOffers(env.DB, [MOONLIGHTER], 1_786_346_000);
-    expect(await listPendingBySubscriber(env.DB)).toEqual(new Map());
+  it("does not create an event for removal but creates one when an offer returns", async () => {
+    await reconcileOffers(env.DB, [MOONLIGHTER], NOW);
+    expect(await reconcileOffers(env.DB, [], NOW + 1_000)).toBeNull();
+    expect(
+      await reconcileOffers(env.DB, [MOONLIGHTER], NOW + 2_000),
+    ).toBeTypeOf("number");
 
-    await reconcileOffers(env.DB, [], 1_786_349_600);
-    await reconcileOffers(env.DB, [MOONLIGHTER], 1_786_353_200);
-    expect([...await listPendingBySubscriber(env.DB)]).toEqual([
-      [101, [MOONLIGHTER]],
-    ]);
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM notification_events",
+      ).first("count"),
+    ).toBe(2);
   });
 
-  it("deletes a subscriber and their deliveries", async () => {
-    await subscribe(env.DB, 101);
-    await reconcileOffers(env.DB, [MOONLIGHTER], 1_786_342_400);
-    await markDelivered(env.DB, 101, [MOONLIGHTER.appId]);
+  it("lists only eligible subscribers with missing event deliveries", async () => {
+    await subscribe(env.DB, 101, NOW - 1);
+    await subscribe(env.DB, 202, NOW + 1);
+    const eventId = await reconcileOffers(env.DB, [MOONLIGHTER], NOW);
+
+    expect(await listDispatchableEvents(env.DB, NOW)).toEqual([
+      { id: eventId, jobs: [{ eventId, chatId: 101 }] },
+    ]);
+
+    await recordNotificationDeliveries(
+      env.DB,
+      [{ eventId, chatId: 101 }],
+      NOW + 100,
+    );
+    await markEventDispatched(env.DB, eventId, NOW);
+
+    expect(
+      await listDispatchableEvents(env.DB, NOW + 60 * 60 * 1_000),
+    ).toEqual([{ id: eventId, jobs: [] }]);
+  });
+
+  it("deletes a subscriber and their old and event deliveries", async () => {
+    await subscribe(env.DB, 101, NOW - 1);
+    const eventId = await reconcileOffers(env.DB, [MOONLIGHTER], NOW);
+    await env.DB.prepare(
+      "INSERT INTO deliveries (chat_id, app_id, delivered_at) VALUES (?, ?, ?)",
+    )
+      .bind(101, MOONLIGHTER.appId, NOW)
+      .run();
+    await recordNotificationDeliveries(
+      env.DB,
+      [{ eventId, chatId: 101 }],
+      NOW,
+    );
 
     await unsubscribe(env.DB, 101);
 
-    expect(await env.DB.prepare("SELECT * FROM subscribers").all()).toMatchObject({
-      results: [],
-    });
-    expect(await env.DB.prepare("SELECT * FROM deliveries").all()).toMatchObject({
-      results: [],
-    });
-  });
-
-  it("lists offers in stable app ID order and ignores an empty delivery batch", async () => {
-    await subscribe(env.DB, 101);
-    await reconcileOffers(env.DB, [BREATHEDGE, MOONLIGHTER], 1_786_342_400);
-
-    await markDelivered(env.DB, 101, []);
-
-    expect(await listOffers(env.DB)).toEqual([MOONLIGHTER, BREATHEDGE]);
-    expect([...await listPendingBySubscriber(env.DB)]).toEqual([
-      [101, [MOONLIGHTER, BREATHEDGE]],
-    ]);
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM deliveries").first(
+        "count",
+      ),
+    ).toBe(0);
+    expect(
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM notification_deliveries",
+      ).first("count"),
+    ).toBe(0);
   });
 });

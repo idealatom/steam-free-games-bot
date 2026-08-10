@@ -1,4 +1,5 @@
 import { checkGiveaways } from "./check-giveaways.js";
+import { consumeNotifications } from "./notification-queue.js";
 import { handleTelegramUpdate } from "./subscriptions.js";
 
 const WEBHOOK_PATH = "/webhook";
@@ -39,5 +40,9 @@ export default {
 
   async scheduled(controller, env) {
     await checkGiveaways(env, controller.scheduledTime);
+  },
+
+  async queue(batch, env) {
+    await consumeNotifications(batch, env);
   },
 };
