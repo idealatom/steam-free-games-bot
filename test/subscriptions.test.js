@@ -37,7 +37,10 @@ describe("Telegram subscriptions", () => {
     ).toBe(101);
     expect(await listPendingBySubscriber(env.DB)).toEqual(new Map());
     expect(messages).toHaveLength(2);
-    expect(messages[0].text).toContain("Вы подписались");
+    expect(messages[0].text).toBe(
+      "✅ You are subscribed to Steam free game alerts.",
+    );
+    expect(messages[1].text).toContain("Currently free on Steam:");
     expect(messages[1].text).toContain("Moonlighter");
   });
 
@@ -47,7 +50,7 @@ describe("Telegram subscriptions", () => {
     await handleTelegramUpdate(env, privateCommand(101, "/start"));
 
     expect(messages.map(({ text }) => text)).toEqual([
-      "✅ Вы подписались на уведомления о бесплатных играх Steam.",
+      "✅ You are subscribed to Steam free game alerts.",
     ]);
   });
 
@@ -76,7 +79,9 @@ describe("Telegram subscriptions", () => {
       privateCommand(101, "/start@SteamGiveawayBot hello"),
     );
 
-    expect(messages[0].text).toContain("Вы подписались");
+    expect(messages[0].text).toBe(
+      "✅ You are subscribed to Steam free game alerts.",
+    );
     expect(
       await env.DB.prepare("SELECT chat_id FROM subscribers").first("chat_id"),
     ).toBe(101);
@@ -101,17 +106,17 @@ describe("Telegram subscriptions", () => {
       ),
     ).toBe(0);
     expect(messages.map(({ text }) => text)).toEqual([
-      "🔕 Уведомления отключены.",
+      "🔕 Notifications are disabled.",
     ]);
   });
 
   it("answers unsupported private text with concise help", async () => {
     const { messages } = captureTelegramMessages();
 
-    await handleTelegramUpdate(env, privateCommand(101, "Привет"));
+    await handleTelegramUpdate(env, privateCommand(101, "Hello"));
 
     expect(messages.map(({ text }) => text)).toEqual([
-      "Доступные команды:\n/start — подписаться\n/stop — отписаться",
+      "Available commands:\n/start — subscribe\n/stop — unsubscribe",
     ]);
   });
 

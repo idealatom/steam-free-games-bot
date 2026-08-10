@@ -90,6 +90,7 @@ describe("hourly giveaway check", () => {
     expect(await listPendingBySubscriber(env.DB)).toEqual(new Map());
     expect(telegramMessages).toHaveLength(1);
     expect(telegramMessages[0]).toMatchObject({ chat_id: 101 });
+    expect(telegramMessages[0].text).toContain("New free games on Steam:");
     expect(telegramMessages[0].text).toContain("Moonlighter");
     expect(telegramMessages[0].text).toContain("Breathedge");
   });
@@ -109,6 +110,7 @@ describe("hourly giveaway check", () => {
     await checkGiveaways(env, 1_786_349_600);
 
     expect(telegramMessages).toHaveLength(2);
+    expect(telegramMessages[1].text).toContain("New free game on Steam:");
     expect(telegramMessages[1].text).toContain("Breathedge");
     expect(telegramMessages[1].text).not.toContain("Moonlighter");
   });

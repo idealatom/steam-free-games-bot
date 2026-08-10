@@ -254,8 +254,8 @@ git commit -m "feat: parse Steam giveaway results"
 it("escapes titles and emits canonical Steam links", () => {
   expect(formatOffersMessage([
     { appId: 7, title: "A < B & C", url: "https://ignored.example" },
-  ], "Новая бесплатная игра:"))
-    .toBe('<b>Новая бесплатная игра:</b>\n\n• <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>');
+  ], "New free game:"))
+    .toBe('<b>New free game:</b>\n\n• <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>');
 });
 ```
 

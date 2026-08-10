@@ -53,10 +53,10 @@ An offer that remains active keeps its delivery records and is not sent twice. W
 1. Telegram sends an HTTPS POST update to the Worker.
 2. The Worker compares `X-Telegram-Bot-Api-Secret-Token` with its configured webhook secret before parsing or acting on the update.
 3. Only commands from private chats are accepted.
-4. `/start` inserts or retains the subscriber, sends a Russian confirmation, and sends the current offers in the same response flow when the list is not empty.
+4. `/start` inserts or retains the subscriber, sends an English confirmation, and sends the current offers in the same response flow when the list is not empty.
 5. After the current-offers message succeeds, the Worker records those deliveries so the hourly job does not repeat them.
 6. `/stop` removes the subscriber and confirms that notifications are disabled.
-7. Unsupported messages receive a concise Russian help response describing `/start` and `/stop`.
+7. Unsupported messages receive a concise English help response describing `/start` and `/stop`.
 
 Repeating `/start` is safe and shows the current giveaway list again when it is not empty. Telegram updates that lack a usable private-chat text message are acknowledged without side effects.
 
@@ -67,7 +67,7 @@ Repeating `/start` is safe and shows the current giveaway list again when it is 
 3. The parser accepts only valid game result rows with a numeric app ID, title, store URL, and explicit 100% discount.
 4. The parser distinguishes a valid empty result from an unrecognized, blocked, or malformed response. An invalid response fails the run and leaves D1 unchanged.
 5. The Worker removes offers no longer present and upserts all current offers using an atomic D1 batch. Unchanged offers retain their delivery rows.
-6. For each subscriber, the Worker finds current offers without matching delivery rows and sends them together in one Russian Telegram message.
+6. For each subscriber, the Worker finds current offers without matching delivery rows and sends them together in one English Telegram message.
 7. Only after that subscriber's message succeeds does the Worker insert the corresponding delivery rows.
 8. If there are no missing deliveries, the run sends nothing.
 

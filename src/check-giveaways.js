@@ -13,8 +13,8 @@ import {
 
 function notificationHeading(offerCount) {
   return offerCount === 1
-    ? "Новая бесплатная игра в Steam:"
-    : "Новые бесплатные игры в Steam:";
+    ? "New free game on Steam:"
+    : "New free games on Steam:";
 }
 
 export async function checkGiveaways(env, observedAt = Date.now()) {

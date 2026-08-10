@@ -32,10 +32,10 @@ describe("Telegram messages", () => {
             url: "https://ignored.example/",
           },
         ],
-        "Новая бесплатная игра:",
+        "New free game:",
       ),
     ).toBe(
-      '<b>Новая бесплатная игра:</b>\n\n• <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>',
+      '<b>New free game:</b>\n\n• <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>',
     );
   });
 
@@ -43,15 +43,15 @@ describe("Telegram messages", () => {
     expect(
       formatOffersMessage(
         [MOONLIGHTER, { appId: 8, title: "Game 2", url: "ignored" }],
-        "Сейчас бесплатно:",
+        "Free now:",
       ),
     ).toContain(
-      '<b>Сейчас бесплатно:</b>\n\n• <a href="https://store.steampowered.com/app/606150/">Moonlighter</a>\n• <a href="https://store.steampowered.com/app/8/">Game 2</a>',
+      '<b>Free now:</b>\n\n• <a href="https://store.steampowered.com/app/606150/">Moonlighter</a>\n• <a href="https://store.steampowered.com/app/8/">Game 2</a>',
     );
   });
 
   it("rejects an empty offer list", () => {
-    expect(() => formatOffersMessage([], "Заголовок")).toThrow(
+    expect(() => formatOffersMessage([], "Heading")).toThrow(
       "Cannot format an empty offer list",
     );
   });
@@ -63,7 +63,7 @@ describe("Telegram messages", () => {
     vi.stubGlobal("fetch", fetchStub);
 
     await expect(
-      sendTelegramMessage(TEST_ENV, 101, "<b>Привет</b>"),
+      sendTelegramMessage(TEST_ENV, 101, "<b>Hello</b>"),
     ).resolves.toEqual({ message_id: 1 });
 
     expect(fetchStub).toHaveBeenCalledOnce();
@@ -77,7 +77,7 @@ describe("Telegram messages", () => {
     });
     expect(JSON.parse(options.body)).toEqual({
       chat_id: 101,
-      text: "<b>Привет</b>",
+      text: "<b>Hello</b>",
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
     });

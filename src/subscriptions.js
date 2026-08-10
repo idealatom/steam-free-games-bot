@@ -7,10 +7,10 @@ import {
 import { formatOffersMessage, sendTelegramMessage } from "./telegram.js";
 
 const SUBSCRIBED_MESSAGE =
-  "✅ Вы подписались на уведомления о бесплатных играх Steam.";
-const UNSUBSCRIBED_MESSAGE = "🔕 Уведомления отключены.";
+  "✅ You are subscribed to Steam free game alerts.";
+const UNSUBSCRIBED_MESSAGE = "🔕 Notifications are disabled.";
 const HELP_MESSAGE =
-  "Доступные команды:\n/start — подписаться\n/stop — отписаться";
+  "Available commands:\n/start — subscribe\n/stop — unsubscribe";
 
 function getCommand(text) {
   return text.trim().split(/\s+/, 1)[0].toLowerCase().split("@", 1)[0];
@@ -37,7 +37,7 @@ export async function handleTelegramUpdate(env, update) {
       await sendTelegramMessage(
         env,
         chatId,
-        formatOffersMessage(offers, "Сейчас бесплатно в Steam:"),
+        formatOffersMessage(offers, "Currently free on Steam:"),
       );
       await markDelivered(
         env.DB,
