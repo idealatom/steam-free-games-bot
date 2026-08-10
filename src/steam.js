@@ -70,9 +70,17 @@ export async function parseSteamOffers(html) {
 }
 
 export async function fetchSteamOffers(url) {
-  const response = await fetch(url, {
+  const resultsUrl = new URL(url);
+  resultsUrl.pathname = "/search/results/";
+  resultsUrl.searchParams.set("start", "0");
+  resultsUrl.searchParams.set("count", "50");
+  resultsUrl.searchParams.set("dynamic_data", "");
+  resultsUrl.searchParams.set("sort_by", "_ASC");
+  resultsUrl.searchParams.set("infinite", "1");
+
+  const response = await fetch(resultsUrl.toString(), {
     headers: {
-      accept: "text/html,application/xhtml+xml",
+      accept: "application/json",
       "user-agent":
         "Mozilla/5.0 (compatible; SteamFreeGamesBot/1.0; +https://workers.cloudflare.com/)",
     },
@@ -83,5 +91,27 @@ export async function fetchSteamOffers(url) {
     throw new Error(`Steam request failed with HTTP ${response.status}`);
   }
 
-  return parseSteamOffers(await response.text());
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error("Steam response is not valid JSON");
+  }
+
+  if (
+    payload?.success !== 1 ||
+    typeof payload.results_html !== "string" ||
+    !Number.isInteger(payload.total_count) ||
+    payload.total_count < 0
+  ) {
+    throw new Error("Steam response has an invalid result payload");
+  }
+
+  const offers = await parseSteamOffers(
+    `<div id="search_resultsRows">${payload.results_html}</div>`,
+  );
+  if (offers.length !== payload.total_count) {
+    throw new Error("Steam result rows do not match the reported count");
+  }
+  return offers;
 }

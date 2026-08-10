@@ -48,12 +48,19 @@ describe("Steam search results", () => {
     );
   });
 
-  it("fetches the supplied Steam URL with a browser user agent", async () => {
+  it("fetches compact Steam results with the supplied filters", async () => {
     const fetchStub = vi.fn(async () =>
-      new Response(STEAM_RESULTS_HTML, {
+      new Response(
+        JSON.stringify({
+          success: 1,
+          results_html: STEAM_RESULTS_HTML,
+          total_count: 2,
+        }),
+        {
         status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      }),
+          headers: { "content-type": "application/json; charset=utf-8" },
+        },
+      ),
     );
     vi.stubGlobal("fetch", fetchStub);
 
@@ -63,9 +70,35 @@ describe("Steam search results", () => {
     ]);
     expect(fetchStub).toHaveBeenCalledOnce();
     const [requestedUrl, options] = fetchStub.mock.calls[0];
-    expect(requestedUrl).toBe(STEAM_SEARCH_URL);
+    const url = new URL(requestedUrl);
+    expect(url.pathname).toBe("/search/results/");
+    expect(url.searchParams.get("maxprice")).toBe("free");
+    expect(url.searchParams.get("category1")).toBe("998");
+    expect(url.searchParams.get("specials")).toBe("1");
+    expect(url.searchParams.get("count")).toBe("50");
+    expect(url.searchParams.get("infinite")).toBe("1");
     expect(options.headers["user-agent"]).toMatch(/Mozilla/);
     expect(options.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("rejects a successful JSON response whose rows cannot be parsed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            success: 1,
+            results_html: "<div>new unknown markup</div>",
+            total_count: 1,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(fetchSteamOffers(STEAM_SEARCH_URL)).rejects.toThrow(
+      "Steam result rows do not match the reported count",
+    );
   });
 
   it("rejects a non-successful Steam response", async () => {

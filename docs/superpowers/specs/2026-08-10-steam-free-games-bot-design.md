@@ -63,7 +63,7 @@ Repeating `/start` is safe and shows the current giveaway list again when it is 
 ## Hourly Giveaway Flow
 
 1. Cloudflare invokes the Worker's `scheduled` handler once per hour.
-2. The Worker requests the supplied Steam search URL with a finite timeout and a normal browser user agent.
+2. The Worker preserves the supplied filters but requests Steam's compact `/search/results/` JSON endpoint with a finite timeout and a normal browser user agent, avoiding the much larger full search page.
 3. The parser accepts only valid game result rows with a numeric app ID, title, store URL, and explicit 100% discount.
 4. The parser distinguishes a valid empty result from an unrecognized, blocked, or malformed response. An invalid response fails the run and leaves D1 unchanged.
 5. The Worker removes offers no longer present and upserts all current offers using an atomic D1 batch. Unchanged offers retain their delivery rows.

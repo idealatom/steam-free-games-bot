@@ -2,7 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import worker from "../src/index.js";
-import { MOONLIGHTER, privateCommand, STEAM_SEARCH_URL } from "./fixtures.js";
+import { MOONLIGHTER, privateCommand } from "./fixtures.js";
 
 function webhookRequest(body, { method = "POST", secret } = {}) {
   const headers = {};
@@ -115,14 +115,17 @@ describe("Worker entry points", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url, options) => {
-        if (url === STEAM_SEARCH_URL) {
-          return new Response(`
-            <div id="search_resultsRows">
+        if (new URL(url).pathname === "/search/results/") {
+          return new Response(JSON.stringify({
+            success: 1,
+            total_count: 1,
+            results_html: `
               <a class="search_result_row" data-ds-appid="${MOONLIGHTER.appId}">
                 <span class="title">${MOONLIGHTER.title}</span>
                 <div class="discount_pct">-100%</div>
               </a>
-            </div>`);
+            `,
+          }));
         }
         telegramMessages.push(JSON.parse(options.body));
         return successfulTelegramResponse();

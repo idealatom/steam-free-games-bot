@@ -182,7 +182,7 @@ git commit -m "feat: add D1 giveaway repository"
 - Create: `src/steam.js`
 
 **Interfaces:**
-- Produces: `parseSteamOffers(html): Promise<Offer[]>` and `fetchSteamOffers(url): Promise<Offer[]>`.
+- Produces: `parseSteamOffers(html): Promise<Offer[]>` and `fetchSteamOffers(url): Promise<Offer[]>`; the latter preserves the supplied filters while deriving Steam's compact `/search/results/` JSON endpoint.
 - Consumes: the Offer shape from Task 1.
 
 - [ ] **Step 1: Write failing parser tests**
@@ -221,7 +221,7 @@ Do not accept an empty array unless the recognizable results container was obser
 
 - [ ] **Step 4: Add a failing HTTP boundary test**
 
-Use a Vitest global `fetch` boundary stub to verify the exact supplied URL, a browser-like user agent, non-2xx rejection, and parsing of a successful body. The production request must use `AbortSignal.timeout(15_000)`. The locked Workers pool no longer exports the older `fetchMock` helper.
+Use a Vitest global `fetch` boundary stub to verify the compact endpoint, preservation of the supplied `maxprice`, `category1`, and `specials` filters, a browser-like user agent, non-2xx rejection, JSON contract validation, reported-count validation, and parsing of a successful body. The production request must use `AbortSignal.timeout(15_000)`. The locked Workers pool no longer exports the older `fetchMock` helper.
 
 - [ ] **Step 5: Implement `fetchSteamOffers` and verify GREEN**
 

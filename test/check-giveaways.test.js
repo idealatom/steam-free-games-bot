@@ -12,7 +12,6 @@ import {
 import {
   BREATHEDGE,
   MOONLIGHTER,
-  STEAM_SEARCH_URL,
 } from "./fixtures.js";
 
 function steamHtml(offers) {
@@ -32,14 +31,22 @@ function mockServices({ steamResponses, telegramResponse } = {}) {
   const responses = [...steamResponses];
   const telegramMessages = [];
   const fetchStub = vi.fn(async (url, options) => {
-    if (url === STEAM_SEARCH_URL) {
+    if (new URL(url).pathname === "/search/results/") {
       const response = responses.shift();
       if (response instanceof Response) {
         return response;
       }
-      return new Response(response, {
+      const payload =
+        typeof response === "string"
+          ? {
+              success: 1,
+              results_html: response,
+              total_count: (response.match(/search_result_row/g) ?? []).length,
+            }
+          : response;
+      return new Response(JSON.stringify(payload), {
         status: 200,
-        headers: { "content-type": "text/html" },
+        headers: { "content-type": "application/json" },
       });
     }
 
@@ -131,10 +138,18 @@ describe("hourly giveaway check", () => {
     await subscribe(env.DB, 101);
     await reconcileOffers(env.DB, [MOONLIGHTER], 1_786_342_400);
     await markDelivered(env.DB, 101, [MOONLIGHTER.appId]);
-    mockServices({ steamResponses: ["<html>Access denied</html>"] });
+    mockServices({
+      steamResponses: [
+        {
+          success: 1,
+          results_html: "<html>unknown markup</html>",
+          total_count: 1,
+        },
+      ],
+    });
 
     await expect(checkGiveaways(env, 1_786_346_000)).rejects.toThrow(
-      "Steam response is not a search result",
+      "Steam result rows do not match the reported count",
     );
 
     expect(await listOffers(env.DB)).toEqual([MOONLIGHTER]);
