@@ -1,23 +1,23 @@
 # Steam Free Games Bot
 
-Telegram-бот раз в час проверяет [постоянную ссылку Steam](https://store.steampowered.com/search/?hwtype=0&maxprice=free&category1=998&specials=1&ndl=1) и присылает друзьям новые платные игры, которые временно отдают со скидкой 100%.
+This Telegram bot checks a [permanent Steam search](https://store.steampowered.com/search/?hwtype=0&maxprice=free&category1=998&specials=1&ndl=1) once an hour and notifies friends about paid games that are temporarily discounted by 100%.
 
-- `/start` — подписаться и сразу получить текущие раздачи, если кеш уже заполнен;
-- `/stop` — отписаться;
-- завершившиеся раздачи не создают сообщений;
-- если та же игра позже снова станет бесплатной, бот пришлёт её ещё раз.
+- `/start` subscribes the user and immediately shows current giveaways if the cache has already been populated.
+- `/stop` unsubscribes the user.
+- Ended giveaways do not produce notifications.
+- If the same game becomes free again later, the bot sends it again.
 
-Бот работает на бесплатных Cloudflare Workers и D1. Отдельный сервер не нужен. Текущая реализация рассчитана примерно на 30–40 друзей.
+The bot runs on the free Cloudflare Workers and D1 tiers. It does not require a server. This implementation is intended for a small group of roughly 30–40 friends.
 
-## Что понадобится
+## Prerequisites
 
-- бесплатный аккаунт [Cloudflare](https://dash.cloudflare.com/sign-up);
-- Node.js 22 или новее и npm;
-- Telegram-бот, созданный через [@BotFather](https://t.me/BotFather).
+- A free [Cloudflare account](https://dash.cloudflare.com/sign-up).
+- Node.js 22 or newer and npm.
+- A Telegram bot created through [@BotFather](https://t.me/BotFather).
 
-У BotFather выполните `/newbot`, задайте имя и username, затем сохраните выданный токен. Не добавляйте токен ни в файлы проекта, ни в Git.
+Run `/newbot` in BotFather, choose a display name and username, and save the token it returns. Never add this token to project files or Git.
 
-## 1. Установка и проверка
+## 1. Install and verify
 
 ```bash
 npm install
@@ -25,49 +25,53 @@ npm test
 npm run check
 ```
 
-`npm run check` повторно запускает тесты и собирает Worker через Wrangler в режиме `--dry-run`. Он не обращается к настоящим Steam и Telegram.
+`npm run check` runs the tests again and bundles the Worker with `wrangler deploy --dry-run`. It does not contact the real Steam or Telegram services.
 
-Войдите в Cloudflare:
+Log in to Cloudflare:
 
 ```bash
 npx wrangler login
 ```
 
-## 2. Создание D1
+## 2. Create the D1 database
 
-Создайте удалённую базу:
+Create the remote database:
 
 ```bash
 npx wrangler d1 create steam-free-games-bot
 ```
 
-Wrangler напечатает UUID `database_id`. В [wrangler.jsonc](./wrangler.jsonc) замените значение `"local"` на этот UUID, не меняя `binding` и `database_name`.
+Wrangler prints a `database_id` UUID. In [wrangler.jsonc](./wrangler.jsonc), replace `"local"` with that UUID. Do not change `binding` or `database_name`.
 
-Примените миграцию:
+Apply the migration:
 
 ```bash
 npx wrangler d1 migrations apply steam-free-games-bot --remote
 ```
 
-Команда должна показать применение `0001_initial.sql` и запросить подтверждение записи в удалённую базу.
+Wrangler should list `0001_initial.sql` and ask you to confirm the remote database write.
 
-## 3. Секреты
+## 3. Configure secrets
 
-Следующий блок запрашивает токен скрыто и передаёт его Wrangler через stdin, поэтому значение не окажется в shell history:
+The following commands read the Telegram token without echoing it and pass it to Wrangler through stdin, so the value is not saved in shell history. The commands work in both Bash and zsh.
 
 ```bash
-read -rsp "Telegram bot token: " TELEGRAM_BOT_TOKEN; echo
+printf "Telegram bot token: "
+stty -echo
+IFS= read -r TELEGRAM_BOT_TOKEN
+stty echo
+printf "\n"
 printf %s "$TELEGRAM_BOT_TOKEN" | npx wrangler secret put TELEGRAM_BOT_TOKEN
 ```
 
-Создайте случайный секрет webhook. Сохраните переменную в текущем терминале: она понадобится после deploy.
+Generate a random webhook secret. Keep the variable in the current terminal because it is also needed after deployment.
 
 ```bash
 TELEGRAM_WEBHOOK_SECRET="$(openssl rand -hex 32)"
 printf %s "$TELEGRAM_WEBHOOK_SECRET" | npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 ```
 
-Не закрывайте этот терминал до регистрации webhook. Если переменная потерялась, придумайте новое значение и повторно выполните `wrangler secret put`.
+Do not close this terminal until the webhook is registered. If the variable is lost, generate another value and run `wrangler secret put` again.
 
 ## 4. Deploy
 
@@ -75,23 +79,24 @@ printf %s "$TELEGRAM_WEBHOOK_SECRET" | npx wrangler secret put TELEGRAM_WEBHOOK_
 npx wrangler deploy
 ```
 
-В конце Wrangler напечатает адрес наподобие:
+Wrangler prints an address similar to:
 
 ```text
-https://steam-free-games-bot.<ваш-subdomain>.workers.dev
+https://steam-free-games-bot.<your-subdomain>.workers.dev
 ```
 
-Сохраните адрес без завершающего `/`:
+Enter the address without a trailing slash:
 
 ```bash
-read -rp "Worker URL: " WORKER_URL
+printf "Worker URL: "
+IFS= read -r WORKER_URL
 ```
 
-Cron `0 * * * *` запускается в начале каждого часа по UTC. После первого успешного запуска активные раздачи сохранятся в D1.
+The `0 * * * *` cron trigger runs at the beginning of every UTC hour. The first successful run stores the active giveaways in D1.
 
-## 5. Регистрация Telegram webhook
+## 5. Register the Telegram webhook
 
-В том же терминале выполните:
+Run this in the same terminal:
 
 ```bash
 curl -sS --request POST \
@@ -101,75 +106,75 @@ curl -sS --request POST \
   --data-urlencode 'allowed_updates=["message"]'
 ```
 
-Ожидаемый ответ содержит `"ok":true`. Проверьте регистрацию:
+The response should contain `"ok":true`. Verify the registration:
 
 ```bash
 curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
 ```
 
-В поле `url` должен быть `${WORKER_URL}/webhook`, а `last_error_message` должен отсутствовать или быть пустым.
+The `url` field should contain `${WORKER_URL}/webhook`, and `last_error_message` should be absent or empty.
 
-Удалите секреты из переменных текущего терминала:
+Remove the secrets from the current shell environment:
 
 ```bash
 unset TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET WORKER_URL
 ```
 
-## 6. Проверка в Telegram
+## 6. Verify the bot in Telegram
 
-1. Откройте `https://t.me/<username вашего бота>`.
-2. Нажмите Start или отправьте `/start`.
-3. Бот сразу подтвердит подписку.
-4. Если первый часовой Steam-check уже прошёл и раздачи есть, бот сразу покажет их. Иначе он пришлёт их при ближайшем успешном запуске cron.
-5. Отправьте `/stop` и убедитесь, что бот подтвердил отключение уведомлений.
+1. Open `https://t.me/<your-bot-username>`.
+2. Press Start or send `/start`.
+3. The bot should immediately confirm the subscription.
+4. If the first hourly Steam check has already completed and giveaways exist, the bot immediately shows them. Otherwise, it sends them after the next successful cron run.
+5. Send `/stop` and confirm that the bot reports that notifications are disabled.
 
-Каждый друг самостоятельно выполняет `/start`. Администраторские подтверждения и ручное добавление chat ID не нужны.
+Each friend subscribes independently with `/start`. No administrator approval or manual chat ID configuration is required.
 
-## Локальная проверка cron
+## Test the cron handler locally
 
-Она использует отдельную локальную D1 и не меняет production:
+This uses a separate local D1 database and does not modify production:
 
 ```bash
 npx wrangler d1 migrations apply steam-free-games-bot --local
 npx wrangler dev --test-scheduled
 ```
 
-Во втором терминале:
+In another terminal:
 
 ```bash
 curl -sS "http://localhost:8787/cdn-cgi/handler/scheduled"
 ```
 
-Для полноценной локальной отправки создайте игнорируемый Git-файл `.dev.vars` с тестовым Telegram-ботом. Не копируйте production-токен в репозиторий.
+For a complete local delivery test, create an ignored `.dev.vars` file with credentials for a separate test bot. Do not copy production credentials into the repository.
 
-## Диагностика
+## Troubleshooting
 
-Посмотреть runtime-ошибки без сохранения Telegram updates и chat ID:
+Stream runtime errors without storing complete Telegram updates or chat IDs:
 
 ```bash
 npx wrangler tail
 ```
 
-Если `/start` не отвечает:
+If `/start` does not respond:
 
-- проверьте `getWebhookInfo` и последние ошибки Telegram;
-- убедитесь, что URL заканчивается на `/webhook`;
-- повторно задайте одинаковый `TELEGRAM_WEBHOOK_SECRET` в Cloudflare и `setWebhook`;
-- проверьте, что удалённая миграция D1 применена.
+- Check `getWebhookInfo` and Telegram's latest webhook error.
+- Verify that the URL ends with `/webhook`.
+- Set the same `TELEGRAM_WEBHOOK_SECRET` in Cloudflare and `setWebhook` again.
+- Verify that the remote D1 migration was applied.
 
-Если подписка работает, но игр нет:
+If subscriptions work but no games appear:
 
-- дождитесь начала следующего часа UTC;
-- откройте исходную ссылку Steam и проверьте, есть ли раздачи со скидкой именно 100%;
-- посмотрите исключения cron через Cloudflare Workers Logs или `wrangler tail`.
+- Wait until the beginning of the next UTC hour.
+- Open the original Steam search and verify that a game is currently discounted by exactly 100%.
+- Inspect cron exceptions in Cloudflare Workers Logs or with `wrangler tail`.
 
-Если пользователь заблокировал бота, Telegram отвечает `403`, и его подписка автоматически удаляется. Временные ошибки Telegram остаются недоставленными и повторяются на следующем часовом запуске только для затронутого пользователя.
+When a user blocks the bot, Telegram returns `403`, and the subscription is removed automatically. Temporary Telegram failures remain undelivered and are retried at the next hourly run only for the affected user.
 
-Если deploy сообщает о неверном D1 ID, значение `"local"` в `wrangler.jsonc` не было заменено UUID из `wrangler d1 create`.
+If deployment reports an invalid D1 ID, replace the `"local"` value in `wrangler.jsonc` with the UUID returned by `wrangler d1 create`.
 
-## Обновление и откат
+## Update and rollback
 
-Перед обновлением:
+Before deploying an update:
 
 ```bash
 npm ci
@@ -177,7 +182,7 @@ npm run check
 npx wrangler deploy
 ```
 
-Для отката разверните проверенный предыдущий Git-коммит:
+To roll back, deploy a previously verified Git commit:
 
 ```bash
 git switch --detach <commit>
@@ -186,4 +191,4 @@ npx wrangler deploy
 git switch -
 ```
 
-Миграция этой версии только создаёт таблицы. Удалять D1 или откатывать схему при откате Worker не требуется.
+This version's migration only creates tables. Rolling back the Worker does not require deleting D1 or reversing the schema.
