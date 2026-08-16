@@ -7,14 +7,14 @@ A serverless Cloudflare Worker that checks Steam every hour and posts newly free
 1. A Cron Trigger runs the Worker once per hour.
 2. The Worker fetches Steam's current `-100%` search results.
 3. It compares them with the previous result stored in Cloudflare D1.
-4. If games were added, it publishes all of them in one Telegram channel post.
-5. It saves the new Steam state only after Telegram accepts the post.
+4. If games were added, it publishes each one as a separate channel post with a large Steam link preview.
+5. It saves the new Steam state only after Telegram accepts every new game post.
 
 That last step favors an occasional duplicate over a missed announcement. Removals and unchanged results do not produce posts. On the first non-empty run, every current result is announced.
 
 ## Free-tier usage
 
-The normal hourly run makes one Worker invocation, one Steam request, a few D1 queries, and either zero or one Telegram API request. The number of channel subscribers does not affect Cloudflare or Telegram API usage.
+The normal hourly run makes one Worker invocation, one Steam request, a few D1 queries, and one Telegram API request per newly added game. The number of channel subscribers does not affect Cloudflare or Telegram API usage.
 
 ## Requirements
 

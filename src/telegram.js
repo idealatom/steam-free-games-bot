@@ -5,22 +5,13 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;");
 }
 
-export function formatOffersMessage(offers) {
-  if (offers.length === 0) {
-    throw new Error("Cannot format an empty offer list");
-  }
-
-  const heading =
-    offers.length === 1 ? "New free Steam game:" : "New free Steam games:";
-  const links = offers.map(({ appId, title }) => {
-    const characters = [...title];
-    const displayTitle =
-      characters.length > 60
-        ? `${characters.slice(0, 59).join("")}…`
-        : title;
-    return `• <a href="https://store.steampowered.com/app/${appId}/">${escapeHtml(displayTitle)}</a>`;
-  });
-  return `<b>${escapeHtml(heading)}</b>\n\n${links.join("\n")}`;
+export function formatOfferMessage({ appId, title }) {
+  const characters = [...title];
+  const displayTitle =
+    characters.length > 60
+      ? `${characters.slice(0, 59).join("")}…`
+      : title;
+  return `<b>New free Steam game:</b>\n\n🎁 <a href="https://store.steampowered.com/app/${appId}/">${escapeHtml(displayTitle)}</a>`;
 }
 
 export class TelegramError extends Error {
@@ -32,7 +23,7 @@ export class TelegramError extends Error {
   }
 }
 
-async function sendTelegramMessageOnce(env, chatId, text) {
+async function sendTelegramMessageOnce(env, chatId, text, previewUrl) {
   const response = await fetch(
     `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
     {
@@ -42,7 +33,11 @@ async function sendTelegramMessageOnce(env, chatId, text) {
         chat_id: chatId,
         text,
         parse_mode: "HTML",
-        link_preview_options: { is_disabled: true },
+        link_preview_options: {
+          url: previewUrl,
+          prefer_large_media: true,
+          show_above_text: true,
+        },
       }),
     },
   );
@@ -66,10 +61,10 @@ async function sendTelegramMessageOnce(env, chatId, text) {
   );
 }
 
-export async function sendTelegramMessage(env, chatId, text) {
+export async function sendTelegramMessage(env, chatId, text, previewUrl) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await sendTelegramMessageOnce(env, chatId, text);
+      return await sendTelegramMessageOnce(env, chatId, text, previewUrl);
     } catch (error) {
       if (
         attempt === 0 &&

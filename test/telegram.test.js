@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeHTML } from "entities";
 
 import {
-  formatOffersMessage,
+  formatOfferMessage,
   sendTelegramMessage,
   TelegramError,
 } from "../src/telegram.js";
@@ -25,62 +24,34 @@ describe("Telegram messages", () => {
 
   it("escapes titles and emits canonical Steam links", () => {
     expect(
-      formatOffersMessage(
-        [
-          {
-            appId: 7,
-            title: "A < B & C",
-            url: "https://ignored.example/",
-          },
-        ],
-      ),
+      formatOfferMessage({
+        appId: 7,
+        title: "A < B & C",
+        url: "https://ignored.example/",
+      }),
     ).toBe(
-      '<b>New free Steam game:</b>\n\n• <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>',
+      '<b>New free Steam game:</b>\n\n🎁 <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>',
     );
   });
 
-  it("formats several offers under the supplied heading", () => {
-    expect(
-      formatOffersMessage(
-        [MOONLIGHTER, { appId: 8, title: "Game 2", url: "ignored" }],
-      ),
-    ).toContain(
-      '<b>New free Steam games:</b>\n\n• <a href="https://store.steampowered.com/app/606150/">Moonlighter</a>\n• <a href="https://store.steampowered.com/app/8/">Game 2</a>',
-    );
+  it("truncates an unusually long game title", () => {
+    const message = formatOfferMessage({
+      ...MOONLIGHTER,
+      title: "A".repeat(100),
+    });
+
+    expect(message).toContain(`${"A".repeat(59)}…</a>`);
+    expect(message).not.toContain("A".repeat(60));
   });
 
-  it("keeps a fifty-game post within Telegram's text limit", () => {
-    const offers = Array.from({ length: 50 }, (_, index) => ({
-      appId: index + 1,
-      title: "A very long Steam game title ".repeat(20),
-      url: "ignored",
-    }));
-
-    const message = formatOffersMessage(offers);
-    const visibleText = decodeHTML(message.replace(/<[^>]+>/g, ""));
-
-    expect(visibleText.length).toBeLessThanOrEqual(4_096);
-    for (const offer of offers) {
-      expect(message).toContain(
-        `href="https://store.steampowered.com/app/${offer.appId}/"`,
-      );
-    }
-  });
-
-  it("rejects an empty offer list", () => {
-    expect(() => formatOffersMessage([])).toThrow(
-      "Cannot format an empty offer list",
-    );
-  });
-
-  it("posts an HTML message with link previews disabled", async () => {
+  it("posts an HTML message with a large Steam preview above it", async () => {
     const fetchStub = vi.fn(async () =>
       telegramResponse({ ok: true, result: { message_id: 1 } }),
     );
     vi.stubGlobal("fetch", fetchStub);
 
     await expect(
-      sendTelegramMessage(TEST_ENV, 101, "<b>Hello</b>"),
+      sendTelegramMessage(TEST_ENV, 101, "<b>Hello</b>", MOONLIGHTER.url),
     ).resolves.toEqual({ message_id: 1 });
 
     expect(fetchStub).toHaveBeenCalledOnce();
@@ -96,7 +67,11 @@ describe("Telegram messages", () => {
       chat_id: 101,
       text: "<b>Hello</b>",
       parse_mode: "HTML",
-      link_preview_options: { is_disabled: true },
+      link_preview_options: {
+        url: MOONLIGHTER.url,
+        prefer_large_media: true,
+        show_above_text: true,
+      },
     });
   });
 
@@ -111,9 +86,12 @@ describe("Telegram messages", () => {
       ),
     );
 
-    const error = await sendTelegramMessage(TEST_ENV, 101, "message").catch(
-      (caught) => caught,
-    );
+    const error = await sendTelegramMessage(
+      TEST_ENV,
+      101,
+      "message",
+      MOONLIGHTER.url,
+    ).catch((caught) => caught);
 
     expect(error).toBeInstanceOf(TelegramError);
     expect(error).toMatchObject({ status: 403, retryAfter: undefined });
@@ -125,7 +103,9 @@ describe("Telegram messages", () => {
       vi.fn(async () => new Response("Bad gateway", { status: 502 })),
     );
 
-    await expect(sendTelegramMessage(TEST_ENV, 101, "message")).rejects.toMatchObject({
+    await expect(
+      sendTelegramMessage(TEST_ENV, 101, "message", MOONLIGHTER.url),
+    ).rejects.toMatchObject({
       name: "TelegramError",
       status: 502,
       message: "Telegram request failed with HTTP 502",
@@ -152,7 +132,12 @@ describe("Telegram messages", () => {
       );
     vi.stubGlobal("fetch", fetchStub);
 
-    const delivery = sendTelegramMessage(TEST_ENV, 101, "message");
+    const delivery = sendTelegramMessage(
+      TEST_ENV,
+      101,
+      "message",
+      MOONLIGHTER.url,
+    );
     await vi.advanceTimersByTimeAsync(999);
     expect(fetchStub).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -179,7 +164,12 @@ describe("Telegram messages", () => {
       .mockImplementationOnce(async () => rateLimit());
     vi.stubGlobal("fetch", fetchStub);
 
-    const delivery = sendTelegramMessage(TEST_ENV, 101, "message");
+    const delivery = sendTelegramMessage(
+      TEST_ENV,
+      101,
+      "message",
+      MOONLIGHTER.url,
+    );
     const assertion = expect(delivery).rejects.toMatchObject({
       status: 429,
       retryAfter: 1,

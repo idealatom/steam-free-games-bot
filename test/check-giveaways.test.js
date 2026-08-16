@@ -69,14 +69,20 @@ describe("hourly giveaway check", () => {
 
     await checkGiveaways(testEnv(), NOW);
 
-    expect(telegramBodies).toHaveLength(1);
+    expect(telegramBodies).toHaveLength(2);
     expect(telegramBodies[0]).toMatchObject({
       chat_id: "@test_channel",
       parse_mode: "HTML",
+      link_preview_options: {
+        url: MOONLIGHTER.url,
+        prefer_large_media: true,
+        show_above_text: true,
+      },
     });
-    expect(telegramBodies[0].text).toContain("New free Steam games:");
     expect(telegramBodies[0].text).toContain("Moonlighter");
-    expect(telegramBodies[0].text).toContain("Breathedge");
+    expect(telegramBodies[0].text).not.toContain("Breathedge");
+    expect(telegramBodies[1].text).toContain("Breathedge");
+    expect(telegramBodies[1].text).not.toContain("Moonlighter");
     expect(await listOffers(env.DB)).toEqual([MOONLIGHTER, BREATHEDGE]);
   });
 
@@ -122,7 +128,7 @@ describe("hourly giveaway check", () => {
     expect(telegramBodies).toHaveLength(2);
   });
 
-  it("uses one Telegram request even when ten games appear", async () => {
+  it("publishes ten games as ten separate preview posts", async () => {
     const offers = Array.from({ length: 10 }, (_, index) => ({
       appId: 10_000 + index,
       title: `Game ${index + 1}`,
@@ -132,10 +138,36 @@ describe("hourly giveaway check", () => {
 
     await checkGiveaways(testEnv(), NOW);
 
-    expect(telegramBodies).toHaveLength(1);
-    for (const offer of offers) {
-      expect(telegramBodies[0].text).toContain(offer.title);
-    }
+    expect(telegramBodies).toHaveLength(10);
+    expect(
+      telegramBodies.map(({ link_preview_options: preview }) => preview.url),
+    ).toEqual(offers.map(({ url }) => url));
+    expect(telegramBodies.map(({ text }) => text)).toEqual(
+      offers.map(
+        ({ appId, title }) =>
+          `<b>New free Steam game:</b>\n\n🎁 <a href="https://store.steampowered.com/app/${appId}/">${title}</a>`,
+      ),
+    );
+  });
+
+  it("leaves state unchanged if a later game post fails", async () => {
+    const success = new Response(
+      JSON.stringify({ ok: true, result: { message_id: 1 } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const failure = new Response(
+      JSON.stringify({ ok: false, error_code: 500, description: "Unavailable" }),
+      { status: 500, headers: { "content-type": "application/json" } },
+    );
+    const { telegramBodies } = mockRequests(
+      [[MOONLIGHTER, BREATHEDGE]],
+      [success, failure],
+    );
+
+    await expect(checkGiveaways(testEnv(), NOW)).rejects.toThrow("Unavailable");
+
+    expect(telegramBodies).toHaveLength(2);
+    expect(await listOffers(env.DB)).toEqual([]);
   });
 
   it("keeps offer state unchanged when Steam fails", async () => {

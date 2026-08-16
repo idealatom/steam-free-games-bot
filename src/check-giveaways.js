@@ -1,6 +1,6 @@
 import { listOffers, reconcileOffers } from "./repository.js";
 import { fetchSteamOffers } from "./steam.js";
-import { formatOffersMessage, sendTelegramMessage } from "./telegram.js";
+import { formatOfferMessage, sendTelegramMessage } from "./telegram.js";
 
 export async function checkGiveaways(env, observedAt = Date.now()) {
   const currentOffers = await fetchSteamOffers(env.STEAM_SEARCH_URL);
@@ -9,11 +9,12 @@ export async function checkGiveaways(env, observedAt = Date.now()) {
   );
   const added = currentOffers.filter(({ appId }) => !previousIds.has(appId));
 
-  if (added.length > 0) {
+  for (const offer of added) {
     await sendTelegramMessage(
       env,
       env.TELEGRAM_CHANNEL_ID,
-      formatOffersMessage(added),
+      formatOfferMessage(offer),
+      offer.url,
     );
   }
 
