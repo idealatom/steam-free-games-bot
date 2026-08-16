@@ -81,6 +81,84 @@ describe("Steam search results", () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("fetches every page when Steam reports more than fifty offers", async () => {
+    const offers = Array.from({ length: 51 }, (_, index) => ({
+      appId: index + 1,
+      title: `Game ${index + 1}`,
+      url: `https://store.steampowered.com/app/${index + 1}/`,
+    }));
+    const fetchStub = vi.fn(async (requestedUrl) => {
+      const start = Number(new URL(requestedUrl).searchParams.get("start"));
+      const page = offers.slice(start, start + 50);
+      return new Response(
+        JSON.stringify({
+          success: 1,
+          total_count: offers.length,
+          results_html: page
+            .map(
+              ({ appId, title }) => `
+                <a class="search_result_row" data-ds-appid="${appId}">
+                  <span class="title">${title}</span>
+                  <div class="discount_pct">-100%</div>
+                </a>`,
+            )
+            .join(""),
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchStub);
+
+    await expect(fetchSteamOffers(STEAM_SEARCH_URL)).resolves.toEqual(offers);
+    expect(fetchStub).toHaveBeenCalledTimes(4);
+    expect(
+      fetchStub.mock.calls.map(([requestedUrl]) =>
+        new URL(requestedUrl).searchParams.get("start"),
+      ),
+    ).toEqual(["0", "50", "0", "50"]);
+  });
+
+  it("rejects a changing multi-page snapshot", async () => {
+    let request = 0;
+    const fetchStub = vi.fn(async (requestedUrl) => {
+      const start = Number(new URL(requestedUrl).searchParams.get("start"));
+      const appId = start + 1 + (request++ >= 2 ? 100 : 0);
+      return new Response(
+        JSON.stringify({
+          success: 1,
+          total_count: 51,
+          results_html: Array.from(
+            { length: start === 0 ? 50 : 1 },
+            (_, index) => `
+              <a class="search_result_row" data-ds-appid="${appId + index}">
+                <span class="title">Game ${appId + index}</span>
+                <div class="discount_pct">-100%</div>
+              </a>`,
+          ).join(""),
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchStub);
+
+    await expect(fetchSteamOffers(STEAM_SEARCH_URL)).rejects.toThrow(
+      "Steam results changed while fetching pages",
+    );
+  });
+
+  it("rejects a result set larger than the supported safe snapshot", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ success: 1, total_count: 201, results_html: "" }),
+        ),
+      ),
+    );
+
+    await expect(fetchSteamOffers(STEAM_SEARCH_URL)).rejects.toThrow(
+      "Steam response has an invalid result payload",
+    );
+  });
+
   it("rejects a successful JSON response whose rows cannot be parsed", async () => {
     vi.stubGlobal(
       "fetch",

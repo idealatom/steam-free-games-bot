@@ -1,6 +1,8 @@
 import { decodeHTML } from "entities";
 
 const APP_ID_PATTERN = /^[1-9]\d*$/;
+const PAGE_SIZE = 50;
+const MAX_TOTAL_COUNT = 200;
 
 function canonicalStoreUrl(appId) {
   return `https://store.steampowered.com/app/${appId}/`;
@@ -72,46 +74,76 @@ export async function parseSteamOffers(html) {
 export async function fetchSteamOffers(url) {
   const resultsUrl = new URL(url);
   resultsUrl.pathname = "/search/results/";
-  resultsUrl.searchParams.set("start", "0");
-  resultsUrl.searchParams.set("count", "50");
+  resultsUrl.searchParams.set("count", String(PAGE_SIZE));
   resultsUrl.searchParams.set("dynamic_data", "");
   resultsUrl.searchParams.set("sort_by", "_ASC");
   resultsUrl.searchParams.set("infinite", "1");
 
-  const response = await fetch(resultsUrl.toString(), {
-    headers: {
-      accept: "application/json",
-      "user-agent":
-        "Mozilla/5.0 (compatible; SteamFreeGamesBot/1.0; +https://workers.cloudflare.com/)",
-    },
-    signal: AbortSignal.timeout(15_000),
-  });
+  async function fetchSnapshot() {
+    let totalCount;
+    const offers = new Map();
 
-  if (!response.ok) {
-    throw new Error(`Steam request failed with HTTP ${response.status}`);
+    for (
+      let start = 0;
+      totalCount === undefined || start < totalCount;
+      start += PAGE_SIZE
+    ) {
+      resultsUrl.searchParams.set("start", String(start));
+      const response = await fetch(resultsUrl.toString(), {
+        headers: {
+          accept: "application/json",
+          "user-agent":
+            "Mozilla/5.0 (compatible; SteamFreeGamesBot/1.0; +https://workers.cloudflare.com/)",
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Steam request failed with HTTP ${response.status}`);
+      }
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new Error("Steam response is not valid JSON");
+      }
+
+      if (
+        payload?.success !== 1 ||
+        typeof payload.results_html !== "string" ||
+        !Number.isSafeInteger(payload.total_count) ||
+        payload.total_count < 0 ||
+        payload.total_count > MAX_TOTAL_COUNT
+      ) {
+        throw new Error("Steam response has an invalid result payload");
+      }
+      if (totalCount !== undefined && payload.total_count !== totalCount) {
+        throw new Error("Steam result count changed while fetching pages");
+      }
+      totalCount = payload.total_count;
+
+      for (const offer of await parseSteamOffers(
+        `<div id="search_resultsRows">${payload.results_html}</div>`,
+      )) {
+        offers.set(offer.appId, offer);
+      }
+    }
+
+    if (offers.size !== totalCount) {
+      throw new Error("Steam result rows do not match the reported count");
+    }
+    return [...offers.values()].sort((left, right) => left.appId - right.appId);
   }
 
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error("Steam response is not valid JSON");
+  const firstSnapshot = await fetchSnapshot();
+  if (firstSnapshot.length <= PAGE_SIZE) {
+    return firstSnapshot;
   }
 
-  if (
-    payload?.success !== 1 ||
-    typeof payload.results_html !== "string" ||
-    !Number.isInteger(payload.total_count) ||
-    payload.total_count < 0
-  ) {
-    throw new Error("Steam response has an invalid result payload");
+  const secondSnapshot = await fetchSnapshot();
+  if (JSON.stringify(firstSnapshot) !== JSON.stringify(secondSnapshot)) {
+    throw new Error("Steam results changed while fetching pages");
   }
-
-  const offers = await parseSteamOffers(
-    `<div id="search_resultsRows">${payload.results_html}</div>`,
-  );
-  if (offers.length !== payload.total_count) {
-    throw new Error("Steam result rows do not match the reported count");
-  }
-  return offers;
+  return secondSnapshot;
 }

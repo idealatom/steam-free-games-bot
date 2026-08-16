@@ -45,25 +45,3 @@ export const STEAM_RESULTS_HTML = `
     </body>
   </html>
 `;
-
-export function privateCommand(chatId, text) {
-  return {
-    update_id: 123456,
-    message: {
-      message_id: 42,
-      from: {
-        id: chatId,
-        is_bot: false,
-        first_name: "Friend",
-        language_code: "ru",
-      },
-      chat: {
-        id: chatId,
-        first_name: "Friend",
-        type: "private",
-      },
-      date: 1_786_342_400,
-      text,
-    },
-  };
-}

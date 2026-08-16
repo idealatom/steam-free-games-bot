@@ -19,12 +19,12 @@ function steamHtml(offers) {
     .join("");
 }
 
-function steamResponse(offers) {
+function steamResponse(offers, totalCount = offers.length) {
   return new Response(
     JSON.stringify({
       success: 1,
       results_html: steamHtml(offers),
-      total_count: offers.length,
+      total_count: totalCount,
     }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
@@ -49,6 +49,10 @@ function mockRequests(steamResponses, telegramResponses = []) {
     throw new Error(`Unexpected request: ${url}`);
   });
   vi.stubGlobal("fetch", fetchStub);
+  vi.stubGlobal("setTimeout", (callback) => {
+    callback();
+    return 0;
+  });
   return { fetchStub, telegramBodies };
 }
 
@@ -72,17 +76,17 @@ describe("hourly giveaway check", () => {
     expect(telegramBodies).toHaveLength(2);
     expect(telegramBodies[0]).toMatchObject({
       chat_id: "@test_channel",
+      photo:
+        "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/606150/header.jpg",
       parse_mode: "HTML",
-      link_preview_options: {
-        url: MOONLIGHTER.url,
-        prefer_large_media: true,
-        show_above_text: true,
+      reply_markup: {
+        inline_keyboard: [[{ text: "🎮 Open in Steam", url: MOONLIGHTER.url }]],
       },
     });
-    expect(telegramBodies[0].text).toContain("Moonlighter");
-    expect(telegramBodies[0].text).not.toContain("Breathedge");
-    expect(telegramBodies[1].text).toContain("Breathedge");
-    expect(telegramBodies[1].text).not.toContain("Moonlighter");
+    expect(telegramBodies[0].caption).toContain("Moonlighter");
+    expect(telegramBodies[0].caption).not.toContain("Breathedge");
+    expect(telegramBodies[1].caption).toContain("Breathedge");
+    expect(telegramBodies[1].caption).not.toContain("Moonlighter");
     expect(await listOffers(env.DB)).toEqual([MOONLIGHTER, BREATHEDGE]);
   });
 
@@ -109,9 +113,9 @@ describe("hourly giveaway check", () => {
     await checkGiveaways(testEnv(), NOW + 2_000);
 
     expect(telegramBodies).toHaveLength(2);
-    expect(telegramBodies[1].text).toContain("New free Steam game:");
-    expect(telegramBodies[1].text).toContain("Breathedge");
-    expect(telegramBodies[1].text).not.toContain("Moonlighter");
+    expect(telegramBodies[1].caption).toContain("New free Steam game:");
+    expect(telegramBodies[1].caption).toContain("Breathedge");
+    expect(telegramBodies[1].caption).not.toContain("Moonlighter");
   });
 
   it("does not post removals and posts an offer if it returns", async () => {
@@ -140,9 +144,14 @@ describe("hourly giveaway check", () => {
 
     expect(telegramBodies).toHaveLength(10);
     expect(
-      telegramBodies.map(({ link_preview_options: preview }) => preview.url),
-    ).toEqual(offers.map(({ url }) => url));
-    expect(telegramBodies.map(({ text }) => text)).toEqual(
+      telegramBodies.map(({ photo }) => photo),
+    ).toEqual(
+      offers.map(
+        ({ appId }) =>
+          `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appId}/header.jpg`,
+      ),
+    );
+    expect(telegramBodies.map(({ caption }) => caption)).toEqual(
       offers.map(
         ({ appId, title }) =>
           `<b>New free Steam game:</b>\n\n🎁 <a href="https://store.steampowered.com/app/${appId}/">${title}</a>`,
@@ -198,5 +207,52 @@ describe("hourly giveaway check", () => {
 
     expect(telegramBodies).toHaveLength(2);
     expect(await listOffers(env.DB)).toEqual([MOONLIGHTER]);
+  });
+
+  it("publishes more than ten new games as one linked list", async () => {
+    const offers = Array.from({ length: 12 }, (_, index) => ({
+      appId: 10_000 + index,
+      title: `Game ${index + 1}`,
+      url: `https://store.steampowered.com/app/${10_000 + index}/`,
+    }));
+    const { telegramBodies } = mockRequests([offers]);
+
+    await checkGiveaways(testEnv(), NOW);
+    expect(telegramBodies).toHaveLength(1);
+    expect(telegramBodies[0]).toMatchObject({
+      chat_id: "@test_channel",
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+    });
+    expect(telegramBodies[0].text).toContain("New free Steam games:");
+    for (const offer of offers) {
+      expect(telegramBodies[0].text).toContain(
+        `<a href="${offer.url}">${offer.title}</a>`,
+      );
+    }
+    expect(await listOffers(env.DB)).toEqual(offers);
+  });
+
+  it("balances multi-post lists instead of creating a one-game tail", async () => {
+    const offers = Array.from({ length: 51 }, (_, index) => ({
+      appId: 20_000 + index,
+      title: `Game ${index + 1}`,
+      url: `https://store.steampowered.com/app/${20_000 + index}/`,
+    }));
+    const firstPage = steamResponse(offers.slice(0, 50), offers.length);
+    const secondPage = steamResponse(offers.slice(50), offers.length);
+    const { telegramBodies } = mockRequests([
+      firstPage,
+      secondPage,
+      firstPage.clone(),
+      secondPage.clone(),
+    ]);
+
+    await checkGiveaways(testEnv(), NOW);
+
+    expect(telegramBodies).toHaveLength(2);
+    expect(
+      telegramBodies.map(({ text }) => (text.match(/<a href=/g) ?? []).length),
+    ).toEqual([26, 25]);
   });
 });
