@@ -4,7 +4,8 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-08",
   "vars": {
-    "STEAM_SEARCH_URL": "https://store.steampowered.com/search/?hwtype=0&maxprice=free&category1=998&specials=1&ndl=1"
+    "STEAM_SEARCH_URL": "https://store.steampowered.com/search/?hwtype=0&maxprice=free&category1=998&specials=1&ndl=1",
+    "TELEGRAM_CHANNEL_ID": "@steam_giveaways_announcements"
   },
   "d1_databases": [
     {
@@ -14,24 +15,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "queues": {
-    "producers": [
-      {
-        "binding": "NOTIFICATION_QUEUE",
-        "queue": "steam-free-games-notifications"
-      }
-    ],
-    "consumers": [
-      {
-        "queue": "steam-free-games-notifications",
-        "max_batch_size": 10,
-        "max_batch_timeout": 5,
-        "max_retries": 10,
-        "dead_letter_queue": "steam-free-games-notifications-dlq",
-        "max_concurrency": 1
-      }
-    ]
-  },
   "triggers": {
     "crons": ["0 * * * *"]
   }

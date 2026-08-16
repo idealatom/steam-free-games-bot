@@ -16,7 +16,7 @@ export default defineConfig({
       miniflare: {
         bindings: {
           TELEGRAM_BOT_TOKEN: "test-token",
-          TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
+          TELEGRAM_CHANNEL_ID: "@test_channel",
           TEST_MIGRATIONS: await readD1Migrations(
             path.join(projectRoot, "migrations"),
           ),

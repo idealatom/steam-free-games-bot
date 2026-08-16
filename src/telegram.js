@@ -5,15 +5,21 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;");
 }
 
-export function formatOffersMessage(offers, heading) {
+export function formatOffersMessage(offers) {
   if (offers.length === 0) {
     throw new Error("Cannot format an empty offer list");
   }
 
-  const links = offers.map(
-    ({ appId, title }) =>
-      `• <a href="https://store.steampowered.com/app/${appId}/">${escapeHtml(title)}</a>`,
-  );
+  const heading =
+    offers.length === 1 ? "New free Steam game:" : "New free Steam games:";
+  const links = offers.map(({ appId, title }) => {
+    const characters = [...title];
+    const displayTitle =
+      characters.length > 60
+        ? `${characters.slice(0, 59).join("")}…`
+        : title;
+    return `• <a href="https://store.steampowered.com/app/${appId}/">${escapeHtml(displayTitle)}</a>`;
+  });
   return `<b>${escapeHtml(heading)}</b>\n\n${links.join("\n")}`;
 }
 
@@ -26,7 +32,7 @@ export class TelegramError extends Error {
   }
 }
 
-export async function sendTelegramMessageOnce(env, chatId, text) {
+async function sendTelegramMessageOnce(env, chatId, text) {
   const response = await fetch(
     `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
     {

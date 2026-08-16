@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { decodeHTML } from "entities";
 
 import {
   formatOffersMessage,
   sendTelegramMessage,
-  sendTelegramMessageOnce,
   TelegramError,
 } from "../src/telegram.js";
 import { MOONLIGHTER } from "./fixtures.js";
@@ -33,10 +33,9 @@ describe("Telegram messages", () => {
             url: "https://ignored.example/",
           },
         ],
-        "New free game:",
       ),
     ).toBe(
-      '<b>New free game:</b>\n\n• <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>',
+      '<b>New free Steam game:</b>\n\n• <a href="https://store.steampowered.com/app/7/">A &lt; B &amp; C</a>',
     );
   });
 
@@ -44,15 +43,32 @@ describe("Telegram messages", () => {
     expect(
       formatOffersMessage(
         [MOONLIGHTER, { appId: 8, title: "Game 2", url: "ignored" }],
-        "Free now:",
       ),
     ).toContain(
-      '<b>Free now:</b>\n\n• <a href="https://store.steampowered.com/app/606150/">Moonlighter</a>\n• <a href="https://store.steampowered.com/app/8/">Game 2</a>',
+      '<b>New free Steam games:</b>\n\n• <a href="https://store.steampowered.com/app/606150/">Moonlighter</a>\n• <a href="https://store.steampowered.com/app/8/">Game 2</a>',
     );
   });
 
+  it("keeps a fifty-game post within Telegram's text limit", () => {
+    const offers = Array.from({ length: 50 }, (_, index) => ({
+      appId: index + 1,
+      title: "A very long Steam game title ".repeat(20),
+      url: "ignored",
+    }));
+
+    const message = formatOffersMessage(offers);
+    const visibleText = decodeHTML(message.replace(/<[^>]+>/g, ""));
+
+    expect(visibleText.length).toBeLessThanOrEqual(4_096);
+    for (const offer of offers) {
+      expect(message).toContain(
+        `href="https://store.steampowered.com/app/${offer.appId}/"`,
+      );
+    }
+  });
+
   it("rejects an empty offer list", () => {
-    expect(() => formatOffersMessage([], "Heading")).toThrow(
+    expect(() => formatOffersMessage([])).toThrow(
       "Cannot format an empty offer list",
     );
   });
@@ -172,25 +188,5 @@ describe("Telegram messages", () => {
 
     await assertion;
     expect(fetchStub).toHaveBeenCalledTimes(2);
-  });
-
-  it("exposes a single-attempt sender for Queue retries", async () => {
-    const fetchStub = vi.fn(async () =>
-      telegramResponse(
-        {
-          ok: false,
-          error_code: 429,
-          description: "Too Many Requests",
-          parameters: { retry_after: 7 },
-        },
-        429,
-      ),
-    );
-    vi.stubGlobal("fetch", fetchStub);
-
-    await expect(
-      sendTelegramMessageOnce(TEST_ENV, 101, "message"),
-    ).rejects.toMatchObject({ status: 429, retryAfter: 7 });
-    expect(fetchStub).toHaveBeenCalledOnce();
   });
 });
